@@ -10,7 +10,8 @@ MicroPython BLE peripheral firmware for Raspberry Pi Pico W. Same protocol as `t
 ## Architecture
 
 - **BLE**: aioble (MicroPython BLE library)
-- **Crypto**: Lightweight secp256k1 + keccak256 (no eth-account, runs on constrained hardware)
+- **Crypto**: Pure-Python keccak-256 + secp256k1 (sign + ecrecover), EIP-191; no eth-account on device
+- **Protocol**: `EXECUTE`/`{data,signing}` envelope with `offeringType`; signal sequences for FIXED tiers (parity with `tapayoka_pi`)
 - **GPIO**: MicroPython `machine.Pin` API for relay control
 
 ## Development
