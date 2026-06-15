@@ -15,7 +15,7 @@ from .config import (
     BLE_CHAR_COMMAND_UUID, BLE_CHAR_DEVICE_INFO_UUID, BLE_CHAR_RESPONSE_UUID,
     BLE_DEVICE_NAME_PREFIX, BLE_SERVICE_UUID,
 )
-from .eth_wallet import EthWallet
+from .command_handler import CommandHandler
 from .gpio_control import RelayController
 
 
@@ -29,7 +29,7 @@ class TapayokaPicoBle:
     def __init__(self, wallet, relay):
         self._wallet = wallet
         self._relay = relay
-        self._server_wallet = EthWallet.load_server_wallet()
+        self._handler = CommandHandler(wallet, relay)
 
     async def start(self):
         if not AIOBLE_AVAILABLE:
@@ -50,9 +50,7 @@ class TapayokaPicoBle:
                 connection = await aioble.advertise(250_000, name=device_name, services=[_uuid(BLE_SERVICE_UUID)])
                 print("[BLE] Connected:", connection.device)
 
-                challenge = self._wallet.sign_challenge()
-                info = {**challenge, "firmwareVersion": "0.1.0-pico", "hasServerWallet": bool(self._server_wallet)}
-                device_info_char.write(json.dumps(info).encode())
+                device_info_char.write(json.dumps(self._wallet.sign_challenge()).encode())
 
                 while connection.is_connected():
                     try:
@@ -64,7 +62,7 @@ class TapayokaPicoBle:
                         pass
 
                 print("[BLE] Disconnected")
-                if self._relay.is_active:
+                if self._relay.is_active and not self._relay.is_sequence_running:
                     self._relay.deactivate()
             except Exception as e:
                 print("[BLE] Error:", e)
@@ -72,41 +70,6 @@ class TapayokaPicoBle:
 
     def _handle_command(self, data):
         try:
-            cmd = json.loads(data.decode())
-            command = cmd.get("command", "").upper()
-
-            if command == "SETUP_SERVER":
-                address = cmd.get("payload", "")
-                if not address or not address.startswith("0x"):
-                    return {"status": "ERROR", "message": "Invalid address"}
-                EthWallet.save_server_wallet(address)
-                self._server_wallet = address
-                return {"status": "OK", "message": "Server wallet configured"}
-            elif command == "AUTHORIZE":
-                payload = cmd.get("payload", "")
-                signature = cmd.get("signature", "")
-                if not self._server_wallet:
-                    return {"status": "ERROR", "message": "No server wallet"}
-                if not self._wallet.verify_server_signature(payload, signature, self._server_wallet):
-                    return {"status": "UNAUTHORIZED", "message": "Invalid signature"}
-                auth = json.loads(payload)
-                seconds = auth.get("seconds", 0)
-                service_type = auth.get("serviceType", "TRIGGER")
-                self._relay.activate(duration_seconds=1 if service_type == "TRIGGER" else seconds)
-                return {"status": "OK", "message": "Authorized for {}s".format(seconds)}
-            elif command == "ON":
-                self._relay.activate(duration_seconds=cmd.get("seconds", 0))
-                return {"status": "OK", "message": "Activated"}
-            elif command == "OFF":
-                self._relay.deactivate()
-                return {"status": "OK", "message": "Deactivated"}
-            elif command == "STATUS":
-                return {"status": "OK", "data": json.dumps({
-                    "active": self._relay.is_active,
-                    "walletAddress": self._wallet.address,
-                    "hasServerWallet": bool(self._server_wallet),
-                })}
-            else:
-                return {"status": "ERROR", "message": "Unknown command"}
+            return self._handler.handle(json.loads(data.decode()))
         except (ValueError, KeyError) as e:
             return {"status": "ERROR", "message": str(e)}
