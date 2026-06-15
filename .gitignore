@@ -9,3 +9,8 @@ dist/
 .env
 .env.local
 .env.merged
+
+# Python
+.venv/
+__pycache__/
+*.pyc
