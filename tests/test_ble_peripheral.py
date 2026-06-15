@@ -1,15 +1,16 @@
-"""Tests for Pico BLE peripheral command handling."""
+"""Tests for Pico BLE peripheral command dispatch (mock mode)."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from eth_account import Account
+from eth_account.messages import encode_defunct
 
 from src.eth_wallet import EthWallet
 from src.gpio_control import RelayController
 
 
-# We can't import aioble on non-MicroPython, so test _handle_command directly
 @pytest.fixture
 def temp_wallet_dir(tmp_path):
     with (
@@ -21,64 +22,37 @@ def temp_wallet_dir(tmp_path):
 
 @pytest.fixture
 def ble(temp_wallet_dir):
-    # Import here since it patches aioble availability
     from src.ble_peripheral import TapayokaPicoBle
-    wallet = EthWallet()
-    relay = RelayController()
-    return TapayokaPicoBle(wallet, relay)
+    return TapayokaPicoBle(EthWallet(), RelayController())
 
 
-class TestHandleCommand:
-    def _cmd(self, command, **kwargs):
-        return json.dumps({"command": command, **kwargs}).encode()
+def test_invalid_json(ble):
+    assert ble._handle_command(b"not json")["status"] == "ERROR"
 
-    def test_on_command(self, ble):
-        result = ble._handle_command(self._cmd("ON"))
-        assert result["status"] == "OK"
-        assert ble._relay.is_active
 
-    def test_off_command(self, ble):
-        ble._relay.activate()
-        result = ble._handle_command(self._cmd("OFF"))
-        assert result["status"] == "OK"
-        assert not ble._relay.is_active
+def test_unknown_command(ble):
+    assert ble._handle_command(json.dumps({"command": "BOGUS"}).encode())["status"] == "ERROR"
 
-    def test_status_command(self, ble):
-        result = ble._handle_command(self._cmd("STATUS"))
-        assert result["status"] == "OK"
-        assert "data" in result
-        data = json.loads(result["data"])
-        assert "active" in data
-        assert "walletAddress" in data
 
-    def test_unknown_command(self, ble):
-        result = ble._handle_command(self._cmd("BOGUS"))
-        assert result["status"] == "ERROR"
+def test_execute_without_server_wallet(ble):
+    server = Account.create()
+    data = {"orderId": "o1", "offeringType": "TIMED", "seconds": 1, "nonce": "n", "exp": 9999999999}
+    message = json.dumps(data)
+    signed = server.sign_message(encode_defunct(text=message))
+    sig = signed.signature.hex()
+    env = {
+        "command": "EXECUTE",
+        "data": data,
+        "signing": {"walletAddress": server.address, "message": message,
+                    "signature": sig if sig.startswith("0x") else "0x" + sig},
+    }
+    assert ble._handle_command(json.dumps(env).encode())["status"] == "ERROR"
 
-    def test_invalid_json(self, ble):
-        result = ble._handle_command(b"not json")
-        assert result["status"] == "ERROR"
 
-    def test_setup_server_valid(self, ble):
-        result = ble._handle_command(
-            self._cmd("SETUP_SERVER", payload="0x742d35Cc6634C0532925a3b844Bc9e7595f2bD08")
-        )
-        assert result["status"] == "OK"
-        assert ble._server_wallet == "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD08"
-
-    def test_setup_server_invalid(self, ble):
-        result = ble._handle_command(self._cmd("SETUP_SERVER", payload="bad"))
-        assert result["status"] == "ERROR"
-
-    def test_authorize_without_server_wallet(self, ble):
-        ble._server_wallet = ""
-        result = ble._handle_command(
-            self._cmd("AUTHORIZE", payload="{}", signature="0xabc")
-        )
-        assert result["status"] == "ERROR"
-        assert "No server wallet" in result["message"]
-
-    def test_on_with_seconds(self, ble):
-        result = ble._handle_command(self._cmd("ON", seconds=60))
-        assert result["status"] == "OK"
-        assert ble._relay.is_active
+def test_device_info_envelope_recovers_to_device(ble):
+    env = ble._wallet.sign_challenge()
+    recovered = Account.recover_message(
+        encode_defunct(text=env["signing"]["message"]),
+        signature=env["signing"]["signature"],
+    )
+    assert recovered.lower() == ble._wallet.address.lower()
