@@ -5,6 +5,11 @@ import os
 import time
 
 from .config import WALLET_KEY_FILE, SERVER_WALLET_FILE
+from tapayoka_pi_core import (
+    build_challenge_data,
+    build_signed_response_data,
+    verify_signed_envelope,
+)
 from .keccak import keccak256
 from .secp256k1 import privkey_to_pubkey, pubkey_to_address, sign, recover
 
@@ -19,6 +24,16 @@ def _random_bytes(n):
 
 def _hex(b):
     return "".join("{:02x}".format(x) for x in b)
+
+
+def _utc_iso_timestamp():
+    try:
+        t = time.gmtime()
+        return "{:04d}-{:02d}-{:02d}T{:02d}:{:02d}:{:02d}Z".format(
+            t[0], t[1], t[2], t[3], t[4], t[5]
+        )
+    except Exception:
+        return str(int(time.time()))
 
 
 def _eip191_hash(message):
@@ -63,38 +78,27 @@ class EthWallet:
         return "0x" + _hex(r.to_bytes(32, "big") + s.to_bytes(32, "big") + bytes([v]))
 
     def sign_challenge(self):
-        data = {
-            "walletAddress": self._address,
-            "firmwareVersion": "0.1.0-pico",
-            "hasServerWallet": bool(EthWallet.load_server_wallet()),
-            "timestamp": int(time.time()),
-            "nonce": _hex(_random_bytes(16)),
+        challenge = build_challenge_data(self._address, int(time.time()), _hex(_random_bytes(16)))
+        message = json.dumps(challenge, sort_keys=True)
+        return {
+            **challenge,
+            "signedPayload": message,
+            "signature": self._sign_message(message),
         }
-        message = json.dumps(data)
-        signing = {
+
+    def sign_response(self, data):
+        message_obj = build_signed_response_data(data, _utc_iso_timestamp())
+        message = json.dumps(message_obj)
+        return {
             "walletAddress": self._address,
             "message": message,
             "signature": self._sign_message(message),
         }
-        return {"data": data, "signing": signing}
 
-    def verify_signed_payload(self, envelope, expected_signer=None, max_age_s=30.0):
-        data = envelope.get("data")
-        signing = envelope.get("signing")
-        if not data or not signing:
-            return False
+    def verify_server_signature(self, payload, signature, server_address):
         try:
-            message = signing["message"]
-            decoded = json.loads(message)
-            ts = decoded.pop("signing_timestamp", None)
-            if ts is not None:
-                age = abs(time.time() - float(ts))
-                if age > max_age_s:
-                    return False
-            if json.dumps(decoded) != json.dumps(data):
-                return False
-            sig = signing["signature"]
-            raw = bytes.fromhex(sig[2:] if sig.startswith("0x") else sig)
+            sig_bytes = bytes.fromhex(signature.replace("0x", ""))
+            raw = sig_bytes
             if len(raw) != 65:
                 return False
             r = int.from_bytes(raw[0:32], "big")
@@ -102,13 +106,14 @@ class EthWallet:
             v = raw[64]
             if v < 27:
                 v += 27
-            x, y = recover(_eip191_hash(message), r, s, v)
-            signer = pubkey_to_address(x, y)
-            if expected_signer and signer.lower() != expected_signer.lower():
-                return False
-            return True
-        except (ValueError, KeyError, TypeError):
+            x, y = recover(_eip191_hash(payload), r, s, v)
+            recovered = pubkey_to_address(x, y)
+            return recovered.lower() == server_address.lower()
+        except Exception:
             return False
+
+    def verify_signed_payload(self, payload, expected_signer=None, max_age_s=30.0):
+        return verify_signed_payload(payload, expected_signer=expected_signer, max_age_s=max_age_s)
 
     @staticmethod
     def load_server_wallet():
@@ -122,3 +127,37 @@ class EthWallet:
     def save_server_wallet(address):
         with open(SERVER_WALLET_FILE, "w") as f:
             f.write(address)
+
+
+def verify_signed_response(data, signing, max_age_s=30.0):
+    return verify_signed_envelope(data, signing, _recover_message_address, max_age_s=max_age_s)
+
+
+def verify_signed_payload(payload, expected_signer=None, max_age_s=30.0):
+    data = payload.get("data")
+    signing = payload.get("signing")
+    if not data or not signing:
+        return False
+    return verify_signed_envelope(
+        data,
+        signing,
+        _recover_message_address,
+        expected_signer=expected_signer,
+        max_age_s=max_age_s,
+    )
+
+
+def _recover_message_address(message, signature):
+    try:
+        sig_bytes = bytes.fromhex(signature.replace("0x", ""))
+        if len(sig_bytes) != 65:
+            return None
+        r = int.from_bytes(sig_bytes[0:32], "big")
+        s = int.from_bytes(sig_bytes[32:64], "big")
+        v = sig_bytes[64]
+        if v < 27:
+            v += 27
+        x, y = recover(_eip191_hash(message), r, s, v)
+        return pubkey_to_address(x, y)
+    except Exception:
+        return None

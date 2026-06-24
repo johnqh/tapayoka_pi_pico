@@ -27,13 +27,30 @@ def test_wallet_address_is_valid_and_persistent(temp_wallet_dir):
 def test_sign_challenge_envelope_recovers_to_device(temp_wallet_dir):
     w = EthWallet()
     env = w.sign_challenge()
-    assert set(env.keys()) == {"data", "signing"}
-    msg = env["signing"]["message"]
-    sig = env["signing"]["signature"]
-    # The app/server verify with eth_account; recovered signer == device address.
+    assert set(env.keys()) == {"walletAddress", "timestamp", "nonce", "signedPayload", "signature"}
+    recovered = Account.recover_message(
+        encode_defunct(text=env["signedPayload"]), signature=env["signature"]
+    )
+    assert recovered.lower() == w.address.lower()
+    assert json.loads(env["signedPayload"]) == {
+        "nonce": env["nonce"],
+        "timestamp": env["timestamp"],
+        "walletAddress": env["walletAddress"],
+    }
+
+
+def test_sign_response_envelope_recovers_to_device(temp_wallet_dir):
+    w = EthWallet()
+    data = {"status": "OK", "message": "ready"}
+    signing = w.sign_response(data)
+    assert set(signing.keys()) == {"walletAddress", "message", "signature"}
+    msg = signing["message"]
+    sig = signing["signature"]
     recovered = Account.recover_message(encode_defunct(text=msg), signature=sig)
     assert recovered.lower() == w.address.lower()
-    assert json.loads(msg) == env["data"]
+    decoded = json.loads(msg)
+    decoded.pop("signing_timestamp")
+    assert decoded == data
 
 
 def _server_execute_envelope(server_account, data: dict) -> dict:

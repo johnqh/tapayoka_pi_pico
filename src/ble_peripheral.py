@@ -1,6 +1,7 @@
 """BLE GATT peripheral for Pico W using aioble."""
 
 import json
+import time
 
 try:
     import aioble
@@ -16,7 +17,8 @@ from .config import (
     BLE_DEVICE_NAME_PREFIX, BLE_SERVICE_UUID,
 )
 from .command_handler import CommandHandler
-from .gpio_control import RelayController
+from .eth_wallet import _hex, _random_bytes
+from tapayoka_pi_core import build_device_info_data
 
 
 def _uuid(s):
@@ -31,6 +33,16 @@ class TapayokaPicoBle:
         self._relay = relay
         self._handler = CommandHandler(wallet, relay)
 
+    def _build_device_info(self):
+        data = build_device_info_data(
+            self._wallet.address,
+            "0.1.0-pico",
+            bool(self._wallet.load_server_wallet()),
+            int(time.time()),
+            _hex(_random_bytes(16)),
+        )
+        return {"data": data, "signing": self._wallet.sign_response(data)}
+
     async def start(self):
         if not AIOBLE_AVAILABLE:
             print("[BLE] Cannot start - aioble not available")
@@ -40,7 +52,7 @@ class TapayokaPicoBle:
         service = aioble.Service(_uuid(BLE_SERVICE_UUID))
         device_info_char = aioble.Characteristic(service, _uuid(BLE_CHAR_DEVICE_INFO_UUID), read=True)
         command_char = aioble.Characteristic(service, _uuid(BLE_CHAR_COMMAND_UUID), write=True, capture=True)
-        response_char = aioble.Characteristic(service, _uuid(BLE_CHAR_RESPONSE_UUID), notify=True)
+        response_char = aioble.Characteristic(service, _uuid(BLE_CHAR_RESPONSE_UUID), read=True, notify=True)
         aioble.register_services(service)
 
         print("[BLE] Starting as:", device_name)
@@ -50,7 +62,7 @@ class TapayokaPicoBle:
                 connection = await aioble.advertise(250_000, name=device_name, services=[_uuid(BLE_SERVICE_UUID)])
                 print("[BLE] Connected:", connection.device)
 
-                device_info_char.write(json.dumps(self._wallet.sign_challenge()).encode())
+                device_info_char.write(json.dumps(self._build_device_info()).encode())
 
                 while connection.is_connected():
                     try:

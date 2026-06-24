@@ -2,10 +2,23 @@
 
 MicroPython BLE peripheral firmware for Raspberry Pi Pico W. Same protocol as `tapayoka_pi` but for constrained hardware.
 
+## Shared core
+
+This repo uses the same shared policy logic as `tapayoka_pi`, but it does not consume that logic from PyPI at runtime.
+
+- `tapayoka_pi_core` is the source of truth for shared logic
+- this repo vendors a local copy under `src/tapayoka_pi_core/`
+- the Pico code imports `tapayoka_pi_core` locally from this repository
+- update the vendored copy with `python scripts/sync_core.py`
+
+## Why local copy
+
+MicroPython targets are constrained and should not depend on PyPI installation flow at runtime. Keeping the shared package local makes the Pico firmware self-contained while still reusing the same logic.
+
 ## Setup
 
 1. Flash MicroPython firmware to Pico W
-2. Copy `src/` files to device
+2. Copy `src/` files to device, including the local `tapayoka_pi_core` package
 
 ## Architecture
 

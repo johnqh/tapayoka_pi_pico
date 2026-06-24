@@ -50,9 +50,13 @@ def test_execute_without_server_wallet(ble):
 
 
 def test_device_info_envelope_recovers_to_device(ble):
-    env = ble._wallet.sign_challenge()
+    env = ble._build_device_info()
     recovered = Account.recover_message(
         encode_defunct(text=env["signing"]["message"]),
         signature=env["signing"]["signature"],
     )
     assert recovered.lower() == ble._wallet.address.lower()
+    decoded = json.loads(env["signing"]["message"])
+    signing_ts = decoded.pop("signing_timestamp")
+    assert isinstance(signing_ts, str)
+    assert decoded == env["data"]

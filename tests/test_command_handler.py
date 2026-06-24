@@ -87,6 +87,20 @@ class TestHandle:
                 "signals": [{"pinNumber": 23, "duration": 5}], "nonce": "n", "exp": 9999999999}
         assert handler.handle(_execute(server, data))["status"] == "BUSY"
 
+    def test_execute_rejects_expired_command(self, handler):
+        server = Account.create()
+        handler.handle(_setup(server))
+        data = {"orderId": "o1", "offeringType": "TIMED", "seconds": 1, "nonce": "n", "exp": 1}
+        assert handler.handle(_execute(server, data))["status"] == "UNAUTHORIZED"
+
+    def test_execute_rejects_replay(self, handler, monkeypatch):
+        server = Account.create()
+        handler.handle(_setup(server))
+        monkeypatch.setattr(handler._relay, "activate", lambda duration_seconds=0: None)
+        data = {"orderId": "o1", "offeringType": "TIMED", "seconds": 1, "nonce": "n", "exp": 9999999999}
+        assert handler.handle(_execute(server, data))["status"] == "OK"
+        assert handler.handle(_execute(server, data))["status"] == "UNAUTHORIZED"
+
     def test_execute_no_server_wallet(self, handler):
         server = Account.create()
         resp = handler.handle(_execute(server, {"orderId": "o1", "offeringType": "TIMED", "seconds": 1,

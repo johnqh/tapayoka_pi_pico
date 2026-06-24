@@ -1,31 +1,15 @@
 """Transport-agnostic command handling for the Pico BLE peripheral."""
 
-from .eth_wallet import EthWallet
+import time
 
-MAX_SIGNAL_SECONDS = 3600
-MIN_BCM_PIN = 0
-MAX_BCM_PIN = 27
-
-
-def validate_signals(signals):
-    if not isinstance(signals, list) or not signals:
-        return None
-    result = []
-    for sig in signals:
-        if not isinstance(sig, dict):
-            return None
-        pin = sig.get("pinNumber")
-        duration = sig.get("duration")
-        if not isinstance(pin, int) or isinstance(pin, bool):
-            return None
-        if pin < MIN_BCM_PIN or pin > MAX_BCM_PIN:
-            return None
-        if not isinstance(duration, (int, float)) or isinstance(duration, bool):
-            return None
-        if duration <= 0 or duration > MAX_SIGNAL_SECONDS:
-            return None
-        result.append({"pinNumber": pin, "duration": duration})
-    return result
+from .eth_wallet import EthWallet, verify_signed_payload
+from tapayoka_pi_core import (
+    MAX_SEEN_NONCES,
+    is_command_expired,
+    is_nonce_valid,
+    prune_seen_nonces,
+    validate_signals,
+)
 
 
 class CommandHandler:
@@ -33,6 +17,7 @@ class CommandHandler:
         self._wallet = wallet
         self._relay = relay
         self._server_wallet = EthWallet.load_server_wallet()
+        self._seen_nonces = {}
 
     def handle(self, msg):
         command = str(msg.get("command", "")).upper()
@@ -44,7 +29,7 @@ class CommandHandler:
         return {"status": "ERROR", "message": "Unknown command: " + command}
 
     def _setup_server(self, msg):
-        if not self._wallet.verify_signed_payload(msg):
+        if not verify_signed_payload(msg):
             return {"status": "UNAUTHORIZED", "message": "Invalid server signature"}
         address = msg.get("signing", {}).get("walletAddress", "")
         if not address or not address.startswith("0x"):
@@ -56,10 +41,22 @@ class CommandHandler:
     def _execute(self, msg):
         if not self._server_wallet:
             return {"status": "ERROR", "message": "No server wallet configured"}
-        if not self._wallet.verify_signed_payload(msg, expected_signer=self._server_wallet):
+        if not verify_signed_payload(msg, expected_signer=self._server_wallet):
             return {"status": "UNAUTHORIZED", "message": "Invalid server signature"}
 
         data = msg.get("data", {})
+        now = time.time()
+        exp = data.get("exp")
+        if is_command_expired(exp, now):
+            return {"status": "UNAUTHORIZED", "message": "Command expired"}
+        nonce = data.get("nonce")
+        if not is_nonce_valid(nonce):
+            return {"status": "UNAUTHORIZED", "message": "Missing nonce"}
+        prune_seen_nonces(self._seen_nonces, now, MAX_SEEN_NONCES)
+        if nonce in self._seen_nonces:
+            return {"status": "UNAUTHORIZED", "message": "Replay detected"}
+        self._seen_nonces[nonce] = float(exp)
+
         seconds = data.get("seconds", 0)
         offering_type = data.get("offeringType", "TRIGGER")
 
@@ -78,3 +75,6 @@ class CommandHandler:
 
         self._relay.activate(duration_seconds=seconds)
         return {"status": "OK", "message": "Activated for {}s".format(seconds)}
+
+    def _prune_nonces(self, now):
+        prune_seen_nonces(self._seen_nonces, now, MAX_SEEN_NONCES)
