@@ -1,5 +1,13 @@
 """Configuration for Tapayoka Pico."""
 
+import os
+
+# os.getenv is absent in MicroPython; the getattr default keeps on-device
+# behavior identical (the "/"-rooted constants below). In CPython dev mode
+# (TRANSPORT=ws) the wallet paths can be redirected via env so storage stays
+# off the filesystem root.
+_getenv = getattr(os, "getenv", lambda k, d=None: d)
+
 BLE_SERVICE_UUID = "000088F4-0000-1000-8000-00805f9b34fb"
 BLE_CHAR_DEVICE_INFO_UUID = "00000E32-0000-1000-8000-00805f9b34fb"
 BLE_CHAR_COMMAND_UUID = "00000E33-0000-1000-8000-00805f9b34fb"
@@ -8,5 +16,5 @@ BLE_DEVICE_NAME_PREFIX = "tapayoka-"
 
 DEFAULT_RELAY_PIN = 15
 
-WALLET_KEY_FILE = "/wallet_key.json"
-SERVER_WALLET_FILE = "/server_wallet.txt"
+WALLET_KEY_FILE = _getenv("WALLET_KEY_FILE", "/wallet_key.json")
+SERVER_WALLET_FILE = _getenv("SERVER_WALLET_FILE", "/server_wallet.txt")

@@ -1,3 +1,5 @@
 pytest
 eth-account
+websockets
+qrcode[pil]
 ../tapayoka_pi_core
