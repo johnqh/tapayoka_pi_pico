@@ -26,6 +26,10 @@ class TapayokaPicoWs:
         self._relay = relay
         self._kiosk_state_dir = kiosk_state_dir
         self._handler = CommandHandler(wallet, relay)
+        # Sockets that have actually engaged the device (sent a message), as
+        # opposed to bare discovery sockets that only read `announce`. The kiosk
+        # reflects engagement, not raw socket state.
+        self._engaged = set()
         # Cache the QR deep link so the QR view can be restored on disconnect.
         # The PNG is written once at startup by main.py (state_dir set there);
         # here state_dir=None so we only need the URL string.
@@ -80,7 +84,10 @@ class TapayokaPicoWs:
 
         remote = ws.remote_address
         print("[WS] Client connected:", remote)
-        update_kiosk_state(self._state_file(), status="CONNECTED", message="Connected")
+        # Do not flip the kiosk to CONNECTED on raw socket open. Discovery
+        # clients (the buyer app's scan probe) open a socket just to read
+        # `announce` and never engage; CONNECTED is set on the first real
+        # message below.
 
         await ws.send(json.dumps({
             "type": "announce",
@@ -92,6 +99,12 @@ class TapayokaPicoWs:
 
         try:
             async for raw in ws:
+                # First message from this socket = real engagement → kiosk Connected.
+                if ws not in self._engaged:
+                    self._engaged.add(ws)
+                    update_kiosk_state(self._state_file(), status="CONNECTED",
+                                       message="Connected")
+
                 try:
                     msg = json.loads(raw)
                 except (ValueError, TypeError) as e:
@@ -127,11 +140,16 @@ class TapayokaPicoWs:
             pass
         finally:
             print("[WS] Client disconnected:", remote)
-            update_kiosk_state(self._state_file(), status="QR",
-                               qr_url=self._deep_link, message="Scan to connect")
-            if self._relay.is_active and not self._relay.is_sequence_running:
-                print("[WS] Safety deactivation on disconnect")
-                self._relay.deactivate()
+            self._engaged.discard(ws)
+            # Only return to QR / safety-deactivate when the last engaged client
+            # leaves. A dangling discovery socket closing must not reset a kiosk
+            # that an engaged client is still driving.
+            if not self._engaged:
+                update_kiosk_state(self._state_file(), status="QR",
+                                   qr_url=self._deep_link, message="Scan to connect")
+                if self._relay.is_active and not self._relay.is_sequence_running:
+                    print("[WS] Safety deactivation on disconnect")
+                    self._relay.deactivate()
 
     def start(self, host="0.0.0.0", port=8765):
         print("[WS] Starting WebSocket peripheral on ws://{}:{}".format(host, port))
