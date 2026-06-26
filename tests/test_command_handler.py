@@ -105,7 +105,7 @@ class TestHandle:
         server = Account.create()
         resp = handler.handle(_execute(server, {"orderId": "o1", "offeringType": "TIMED", "seconds": 1,
                                                 "nonce": "n", "exp": 9999999999}))
-        assert resp["status"] == "ERROR"
+        assert resp["status"] == "NOT_CONFIGURED"
 
     def test_execute_bad_signature(self, handler):
         server = Account.create()

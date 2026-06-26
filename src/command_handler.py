@@ -5,6 +5,7 @@ import time
 from .eth_wallet import EthWallet, verify_signed_payload
 from tapayoka_pi_core import (
     MAX_SEEN_NONCES,
+    STATUS_NOT_CONFIGURED,
     is_command_expired,
     is_nonce_valid,
     prune_seen_nonces,
@@ -40,7 +41,7 @@ class CommandHandler:
 
     def _execute(self, msg):
         if not self._server_wallet:
-            return {"status": "ERROR", "message": "No server wallet configured"}
+            return {"status": STATUS_NOT_CONFIGURED, "message": "Device not configured"}
         if not verify_signed_payload(msg, expected_signer=self._server_wallet):
             return {"status": "UNAUTHORIZED", "message": "Invalid server signature"}
 
