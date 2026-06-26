@@ -14,3 +14,6 @@ dist/
 .venv/
 __pycache__/
 *.pyc
+
+# WS dev harness state (wallet + kiosk)
+dev_state/

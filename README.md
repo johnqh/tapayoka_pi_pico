@@ -34,6 +34,28 @@ pip install pytest
 pytest tests/ -v
 ```
 
+## Local dev (WebSocket + kiosk)
+
+Run the firmware logic on a Mac without a Pico W or BLE hardware. This mode
+is CPython-only and never touches the on-device BLE path.
+
+```bash
+pip install -r requirements-dev.txt
+TRANSPORT=ws python -m src.main
+```
+
+- WebSocket peripheral: `ws://0.0.0.0:8765` (mirrors the BLE protocol:
+  `announce` on connect, `read_device_info`, `command`).
+- Kiosk display: `http://0.0.0.0:8026` (QR → Connected → Running job countdown).
+- Wallet key, server wallet, and kiosk state are written under `./dev_state/`.
+
+Override ports/paths with `KIOSK_PORT`, `WALLET_KEY_FILE`, `SERVER_WALLET_FILE`,
+`KIOSK_STATE_DIR`.
+
+> The mock relay (no `machine` module) does not self-deactivate on a timer, so
+> a `TRIGGER`/`TIMED` job logs "Relay ON" without an auto-off; the kiosk
+> countdown and disconnect-safety still behave correctly.
+
 ## Related Packages
 
 - `tapayoka_pi` -- Full Raspberry Pi variant (Python, same BLE protocol)
