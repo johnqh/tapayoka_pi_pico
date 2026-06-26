@@ -46,7 +46,7 @@ def test_execute_without_server_wallet(ble):
         "signing": {"walletAddress": server.address, "message": message,
                     "signature": sig if sig.startswith("0x") else "0x" + sig},
     }
-    assert ble._handle_command(json.dumps(env).encode())["status"] == "ERROR"
+    assert ble._handle_command(json.dumps(env).encode())["status"] == "NOT_CONFIGURED"
 
 
 def test_device_info_envelope_recovers_to_device(ble):

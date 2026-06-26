@@ -111,6 +111,10 @@ class TapayokaPicoWs:
                     cmd_env = msg.get("data", {})
                     result = self._handler.handle(cmd_env)
                     await ws.send(json.dumps({"type": "response", "data": result}))
+                    if result.get("status") == "NOT_CONFIGURED":
+                        print("[WS] Closing connection: device not configured")
+                        await ws.close()
+                        break
                     if (result.get("status") == "OK"
                             and str(cmd_env.get("command", "")).upper() == "EXECUTE"):
                         self._show_running(cmd_env)

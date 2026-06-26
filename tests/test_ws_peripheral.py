@@ -86,6 +86,27 @@ def test_unknown_type_returns_error(peripheral):
     assert msg["data"]["status"] == "ERROR"
 
 
+def test_execute_unconfigured_closes_connection(peripheral):
+    server = Account.create()
+
+    async def scenario(ws):
+        await ws.recv()  # announce
+        cmd = _signed(server, "EXECUTE", {
+            "orderId": "o1", "offeringType": "TIMED", "seconds": 1,
+            "nonce": "n", "exp": 9999999999,
+        })
+        await ws.send(json.dumps({"type": "command", "data": cmd}))
+        resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        # Server must close the socket right after the NOT_CONFIGURED response.
+        with pytest.raises(websockets.exceptions.ConnectionClosed):
+            await asyncio.wait_for(ws.recv(), timeout=5)
+        return resp
+
+    msg = asyncio.run(_run_client(peripheral, scenario))
+    assert msg["type"] == "response"
+    assert msg["data"]["status"] == "NOT_CONFIGURED"
+
+
 def test_setup_then_execute_emits_running(peripheral, monkeypatch):
     monkeypatch.setattr(peripheral._relay, "activate", lambda duration_seconds=0: None)
     server = Account.create()

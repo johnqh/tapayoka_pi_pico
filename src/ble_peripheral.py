@@ -70,6 +70,10 @@ class TapayokaPicoBle:
                         response = self._handle_command(data)
                         response_char.write(json.dumps(response).encode())
                         response_char.notify(connection)
+                        if response.get("status") == "NOT_CONFIGURED":
+                            print("[BLE] Disconnecting: device not configured")
+                            await connection.disconnect()
+                            break
                     except asyncio.TimeoutError:
                         pass
 
