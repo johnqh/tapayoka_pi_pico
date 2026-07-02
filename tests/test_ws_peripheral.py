@@ -108,7 +108,7 @@ def test_execute_unconfigured_closes_connection(peripheral):
 
 
 def test_setup_then_execute_emits_running(peripheral, monkeypatch):
-    monkeypatch.setattr(peripheral._relay, "activate", lambda duration_seconds=0: None)
+    monkeypatch.setattr(peripheral._relay, "activate", lambda duration_seconds=0, pin=None: None)
     server = Account.create()
 
     async def scenario(ws):

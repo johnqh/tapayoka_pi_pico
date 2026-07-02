@@ -18,6 +18,7 @@ from .config import DEFAULT_RELAY_PIN
 class RelayController:
     def __init__(self, pin_num=DEFAULT_RELAY_PIN):
         self._pin_num = pin_num
+        self._active_pin = pin_num
         self._active = False
         self._timer = Timer() if MACHINE_AVAILABLE else None
         self._pins = {}
@@ -48,11 +49,13 @@ class RelayController:
         if pin is not None:
             pin.value(1 if high else 0)
 
-    def activate(self, duration_seconds=0):
+    def activate(self, duration_seconds=0, pin=None):
         self._cancel_timer()
-        self._set_pin(self._pin_num, True)
+        target = self._pin_num if pin is None else int(pin)
+        self._active_pin = target
+        self._set_pin(target, True)
         self._active = True
-        print("[GPIO] Relay ON")
+        print("[GPIO] Relay ON", target)
         if duration_seconds > 0 and self._timer:
             self._timer.init(
                 mode=Timer.ONE_SHOT,
@@ -62,7 +65,7 @@ class RelayController:
 
     def deactivate(self, _timer=None):
         self._cancel_timer()
-        self._set_pin(self._pin_num, False)
+        self._set_pin(self._active_pin, False)
         self._active = False
         print("[GPIO] Relay OFF")
 

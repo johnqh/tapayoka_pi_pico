@@ -65,15 +65,25 @@ class TapayokaPicoWs:
         if offering == "FIXED" and signals:
             pin = int(signals[0]["pinNumber"])
             duration = int(sum(s["duration"] for s in signals))
+            action_signals = signals
         elif offering == "TRIGGER":
             pin = DEFAULT_RELAY_PIN
             duration = 1
+            action_signals = [{"pinNumber": pin, "duration": 1}]
         else:
-            pin = DEFAULT_RELAY_PIN
+            # TIMED: honor the transmitted pin when present, else the default.
             duration = int(data.get("seconds", 0))
+            pin = (
+                int(signals[0]["pinNumber"])
+                if isinstance(signals, list) and signals
+                else DEFAULT_RELAY_PIN
+            )
+            action_signals = [{"pinNumber": pin, "duration": duration}]
         update_kiosk_state(
             self._state_file(),
             status="RUNNING",
+            offering_type=offering,
+            signals=action_signals,
             pin=pin,
             duration_seconds=duration,
             started_at=int(time.time()),

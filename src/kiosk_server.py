@@ -76,6 +76,16 @@ KIOSK_HTML = """\
     }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
     #job-timer { font-variant-numeric: tabular-nums; min-width: 3.5ch; }
+
+    /* Action detail (the relay signals being run) */
+    #job-action {
+      margin-top: clamp(8px, 2vh, 16px);
+      font-size: clamp(13px, 3.2vw, 18px);
+      font-weight: 300;
+      opacity: 0.7;
+      letter-spacing: 0.3px;
+      max-width: 90vw;
+    }
   </style>
 </head>
 <body>
@@ -90,6 +100,7 @@ KIOSK_HTML = """\
       <span id="job-pin"></span>
       <span id="job-timer">00:00</span>
     </div>
+    <div id="job-action" class="hidden"></div>
   </div>
   <script>
     let lastTimestamp = -1;
@@ -105,10 +116,20 @@ KIOSK_HTML = """\
       if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
     }
 
+    function actionLabel(data) {
+      const signals = Array.isArray(data.signals) ? data.signals : [];
+      if (!signals.length) return '';
+      const kind = data.offering_type || '';
+      if (kind === 'TIMED') return 'PIN ' + signals[0].pinNumber + ' · held';
+      if (kind === 'TRIGGER') return 'PIN ' + signals[0].pinNumber + ' · pulse';
+      return signals.map(s => 'PIN ' + s.pinNumber + ' · ' + s.duration + 's').join('  →  ');
+    }
+
     function render(data) {
       const qrView = document.getElementById('qr-view');
       const connView = document.getElementById('connected-view');
       const jobStatus = document.getElementById('job-status');
+      const jobAction = document.getElementById('job-action');
 
       if (data.status === 'RUNNING') {
         show(qrView, false);
@@ -116,6 +137,9 @@ KIOSK_HTML = """\
         show(jobStatus, true);
         document.getElementById('job-pin').textContent =
           (data.pin === undefined || data.pin === null) ? '' : ('PIN ' + data.pin);
+        const label = actionLabel(data);
+        jobAction.textContent = label;
+        show(jobAction, label !== '');
         stopCountdown();
         const start = data.started_at, duration = data.duration_seconds;
         const tick = () => {
@@ -132,11 +156,13 @@ KIOSK_HTML = """\
         show(qrView, false);
         show(connView, true);
         show(jobStatus, false);
+        show(jobAction, false);
 
       } else if (data.status === 'QR' && data.qr_url) {
         stopCountdown();
         show(connView, false);
         show(jobStatus, false);
+        show(jobAction, false);
         document.getElementById('qr-img').src = '/qr.png?t=' + data.timestamp;
         show(qrView, true);
       }

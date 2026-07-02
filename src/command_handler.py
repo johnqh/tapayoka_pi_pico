@@ -4,7 +4,9 @@ import time
 
 from .eth_wallet import EthWallet, verify_signed_payload
 from tapayoka_pi_core import (
+    MAX_BCM_PIN,
     MAX_SEEN_NONCES,
+    MIN_BCM_PIN,
     STATUS_NOT_CONFIGURED,
     is_command_expired,
     is_nonce_valid,
@@ -74,8 +76,25 @@ class CommandHandler:
             self._relay.activate(duration_seconds=1)
             return {"status": "OK", "message": "Activated for 1s"}
 
-        self._relay.activate(duration_seconds=seconds)
+        # TIMED: hold a single relay for the purchased seconds, honoring the
+        # action's pin (sent as a single start signal) when valid, else default.
+        pin = self._timed_pin(data.get("signals"))
+        self._relay.activate(duration_seconds=seconds, pin=pin)
         return {"status": "OK", "message": "Activated for {}s".format(seconds)}
+
+    @staticmethod
+    def _timed_pin(signals):
+        if not isinstance(signals, list) or not signals:
+            return None
+        first = signals[0]
+        if not isinstance(first, dict):
+            return None
+        pin = first.get("pinNumber")
+        if not isinstance(pin, int) or isinstance(pin, bool):
+            return None
+        if pin < MIN_BCM_PIN or pin > MAX_BCM_PIN:
+            return None
+        return pin
 
     def _prune_nonces(self, now):
         prune_seen_nonces(self._seen_nonces, now, MAX_SEEN_NONCES)

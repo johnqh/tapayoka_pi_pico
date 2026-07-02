@@ -62,7 +62,7 @@ class TestHandle:
         server = Account.create()
         assert handler.handle(_setup(server))["status"] == "OK"
         seen = {}
-        monkeypatch.setattr(handler._relay, "activate", lambda duration_seconds=0: seen.setdefault("d", duration_seconds))
+        monkeypatch.setattr(handler._relay, "activate", lambda duration_seconds=0, pin=None: seen.setdefault("d", duration_seconds))
         resp = handler.handle(_execute(server, {"orderId": "o1", "offeringType": "TIMED", "seconds": 600,
                                                 "nonce": "n", "exp": 9999999999}))
         assert resp["status"] == "OK"
@@ -96,7 +96,7 @@ class TestHandle:
     def test_execute_rejects_replay(self, handler, monkeypatch):
         server = Account.create()
         handler.handle(_setup(server))
-        monkeypatch.setattr(handler._relay, "activate", lambda duration_seconds=0: None)
+        monkeypatch.setattr(handler._relay, "activate", lambda duration_seconds=0, pin=None: None)
         data = {"orderId": "o1", "offeringType": "TIMED", "seconds": 1, "nonce": "n", "exp": 9999999999}
         assert handler.handle(_execute(server, data))["status"] == "OK"
         assert handler.handle(_execute(server, data))["status"] == "UNAUTHORIZED"

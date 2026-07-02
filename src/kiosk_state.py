@@ -44,6 +44,8 @@ def update_kiosk_state(
     duration_seconds: int | None = None,
     started_at: int | None = None,
     pin: int | None = None,
+    offering_type: str | None = None,
+    signals: list | None = None,
 ) -> None:
     """Write kiosk state so the HTML page can render the correct view."""
     payload: dict[str, object] = {
@@ -60,6 +62,11 @@ def update_kiosk_state(
         payload["started_at"] = started_at
     if pin is not None:
         payload["pin"] = pin
+    if offering_type is not None:
+        payload["offering_type"] = offering_type
+    # The relay action being run (each entry {"pinNumber": int, "duration": s}).
+    if signals is not None:
+        payload["signals"] = signals
 
     _write_json_atomic(state_file, payload)
     print(f"[Kiosk] State updated: {status}")
