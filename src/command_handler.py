@@ -3,6 +3,7 @@
 import time
 
 from .eth_wallet import EthWallet, verify_signed_payload
+from .pin_mapping import logical_pin_to_gpio, map_signals
 from tapayoka_pi_core import (
     MAX_BCM_PIN,
     MAX_SEEN_NONCES,
@@ -11,8 +12,19 @@ from tapayoka_pi_core import (
     is_command_expired,
     is_nonce_valid,
     prune_seen_nonces,
-    validate_signals,
+    validate_signals as _core_validate_signals,
 )
+
+
+def validate_signals(signals):
+    validated = _core_validate_signals(signals)
+    if validated is None:
+        return None
+    try:
+        map_signals(validated)
+    except (TypeError, ValueError):
+        return None
+    return validated
 
 
 class CommandHandler:
@@ -67,9 +79,10 @@ class CommandHandler:
             signals = validate_signals(data.get("signals"))
             if signals is None:
                 return {"status": "ERROR", "message": "Invalid signals"}
-            if not self._relay.run_sequence(signals):
+            resolved_signals = map_signals(signals)
+            if not self._relay.run_sequence(resolved_signals):
                 return {"status": "BUSY", "message": "Device is busy"}
-            total = int(sum(s["duration"] for s in signals))
+            total = int(sum(s["duration"] for s in resolved_signals))
             return {"status": "OK", "message": "Sequence started ({}s)".format(total)}
 
         if offering_type == "TRIGGER":
@@ -94,7 +107,10 @@ class CommandHandler:
             return None
         if pin < MIN_BCM_PIN or pin > MAX_BCM_PIN:
             return None
-        return pin
+        try:
+            return logical_pin_to_gpio(pin)
+        except ValueError:
+            return None
 
     def _prune_nonces(self, now):
         prune_seen_nonces(self._seen_nonces, now, MAX_SEEN_NONCES)

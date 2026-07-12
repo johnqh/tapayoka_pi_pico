@@ -16,6 +16,7 @@ from .command_handler import CommandHandler
 from .config import BLE_DEVICE_NAME_PREFIX, DEFAULT_RELAY_PIN
 from .eth_wallet import _hex, _random_bytes
 from .kiosk_state import generate_deep_link, update_kiosk_state
+from .pin_mapping import logical_pin_to_gpio, map_signals
 
 
 class TapayokaPicoWs:
@@ -63,9 +64,9 @@ class TapayokaPicoWs:
         offering = data.get("offeringType", "TRIGGER")
         signals = data.get("signals")
         if offering == "FIXED" and signals:
-            pin = int(signals[0]["pinNumber"])
-            duration = int(sum(s["duration"] for s in signals))
-            action_signals = signals
+            action_signals = map_signals(signals)
+            pin = int(action_signals[0]["pinNumber"])
+            duration = int(sum(s["duration"] for s in action_signals))
         elif offering == "TRIGGER":
             pin = DEFAULT_RELAY_PIN
             duration = 1
@@ -73,11 +74,12 @@ class TapayokaPicoWs:
         else:
             # TIMED: honor the transmitted pin when present, else the default.
             duration = int(data.get("seconds", 0))
-            pin = (
-                int(signals[0]["pinNumber"])
-                if isinstance(signals, list) and signals
-                else DEFAULT_RELAY_PIN
-            )
+            pin = DEFAULT_RELAY_PIN
+            if isinstance(signals, list) and signals:
+                try:
+                    pin = logical_pin_to_gpio(int(signals[0]["pinNumber"]))
+                except (TypeError, ValueError):
+                    pin = DEFAULT_RELAY_PIN
             action_signals = [{"pinNumber": pin, "duration": duration}]
         update_kiosk_state(
             self._state_file(),

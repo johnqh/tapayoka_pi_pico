@@ -8,6 +8,7 @@ from eth_account.messages import encode_defunct
 from src.command_handler import CommandHandler, validate_signals
 from src.eth_wallet import EthWallet
 from src.gpio_control import RelayController
+from src.pin_mapping import logical_pin_to_gpio
 
 
 @pytest.fixture
@@ -49,12 +50,13 @@ def _setup(server):
 
 class TestValidateSignals:
     def test_valid(self):
-        assert validate_signals([{"pinNumber": 23, "duration": 5}]) == [{"pinNumber": 23, "duration": 5}]
+        assert validate_signals([{"pinNumber": 1, "duration": 5}]) == [{"pinNumber": 1, "duration": 5}]
 
     def test_invalid(self):
         assert validate_signals([]) is None
         assert validate_signals([{"pinNumber": 99, "duration": 5}]) is None
         assert validate_signals([{"pinNumber": 5, "duration": 0}]) is None
+        assert validate_signals([{"pinNumber": 27, "duration": 5}]) is None
 
 
 class TestHandle:
@@ -74,17 +76,20 @@ class TestHandle:
         called = {}
         monkeypatch.setattr(handler._relay, "run_sequence", lambda signals: called.setdefault("s", signals) or True)
         data = {"orderId": "o1", "offeringType": "FIXED", "seconds": 35,
-                "signals": [{"pinNumber": 23, "duration": 5}, {"pinNumber": 24, "duration": 30}],
+                "signals": [{"pinNumber": 1, "duration": 5}, {"pinNumber": 2, "duration": 30}],
                 "nonce": "n", "exp": 9999999999}
         assert handler.handle(_execute(server, data))["status"] == "OK"
-        assert called["s"] == data["signals"]
+        assert called["s"] == [
+            {"pinNumber": logical_pin_to_gpio(1), "duration": 5},
+            {"pinNumber": logical_pin_to_gpio(2), "duration": 30},
+        ]
 
     def test_execute_fixed_busy(self, handler, monkeypatch):
         server = Account.create()
         handler.handle(_setup(server))
         monkeypatch.setattr(handler._relay, "run_sequence", lambda signals: False)
         data = {"orderId": "o1", "offeringType": "FIXED", "seconds": 5,
-                "signals": [{"pinNumber": 23, "duration": 5}], "nonce": "n", "exp": 9999999999}
+                "signals": [{"pinNumber": 1, "duration": 5}], "nonce": "n", "exp": 9999999999}
         assert handler.handle(_execute(server, data))["status"] == "BUSY"
 
     def test_execute_rejects_expired_command(self, handler):
