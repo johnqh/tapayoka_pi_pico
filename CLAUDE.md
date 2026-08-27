@@ -1,5 +1,10 @@
 # tapayoka_pi_pico
 
+> **Git policy — never auto-commit or auto-push.** Leave your work in the working tree.
+> Run `git commit`, `git push`, `gh pr create`, or `scripts/push_all.sh` **only when the user
+> explicitly asks in that turn**. Approval for an earlier change does not carry forward, and
+> finishing a task is not permission to commit it.
+
 MicroPython BLE peripheral firmware for Raspberry Pi Pico W. Same protocol as tapayoka_pi but for constrained hardware.
 
 ## Architecture
@@ -28,3 +33,7 @@ in MicroPython, which has no `os.getenv`).
 ## Deployment
 
 Flash MicroPython firmware to Pico W, then copy src/ files to device.
+
+## Git Workflow
+
+- Do not use feature branches for code changes. Always stay on the current branch.
